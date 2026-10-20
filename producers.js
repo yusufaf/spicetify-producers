@@ -12,6 +12,11 @@
 (function Producers() {
   "use strict";
 
+  // Claimed synchronously at evaluation, so if two copies are both still waiting to start
+  // (installed file + a re-injected one), the newest evaluated one wins rather than the slowest.
+  const instanceToken = {};
+  if (typeof window !== "undefined") window.__producersLatest = instanceToken;
+
   //#region Constants
 
   // x-release-please-start-version
@@ -914,9 +919,12 @@
       /* Any tag: Spotify renders this container as a div or a span depending on the build/layout.
          !important so a theme restyling it can't push the producers out of view. */
       [role="gridcell"] :has(> .pr-inline:not(:empty)) { display: flex !important; align-items: baseline; min-width: 0; white-space: pre !important; }
-      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
-      /* Artist links don't shrink (each is capped at 60%), so the producers give up space first and the
-         artists, Spotify's own info, stay readable. With many artists the producers drop out of view. */
+      [role="gridcell"] :has(> .pr-inline:not(:empty)) { overflow: hidden; }
+      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a { flex: 0 0.05 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a:only-of-type { flex-shrink: 0; max-width: 70%; }
+      /* Flex shrink is weighted by width, so the artist links get a near-zero factor (and a lone artist
+         none): the producers give up space first, down to 10ch, and the artists, Spotify's own info,
+         stay readable. */
       .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: 10ch; white-space: nowrap; overflow: hidden; }
       .pr-inline:empty { display: none; }
       .pr-inline-sep { flex: none; white-space: pre; }
@@ -965,16 +973,21 @@
     }
   }
 
+  /** The one place a page-type switch changes: settings modal and List-menu toggles both go here. */
+  function setSurfaceEnabled(surface, on) {
+    config[surface] = on;
+    saveConfig();
+    currentSurface = null;
+    onNavigate();
+  }
+
   function bindToggle(btn, surface, sync) {
     sync();
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      config[surface] = !config[surface];
-      saveConfig();
+      setSurfaceEnabled(surface, !config[surface]);
       sync();
-      currentSurface = null;
-      onNavigate();
     });
   }
 
@@ -1003,17 +1016,31 @@
     templateLi.after(li);
   }
 
+  /** The deepest element under `root` whose own text is `text`. */
+  function findTextElement(root, text) {
+    return [...root.querySelectorAll("*")].reverse().find((el) => directTextContent(el).trim() === text) || null;
+  }
+
   function addViewMenuToggle(menu, headingLi, selectedBtn, surface) {
+    const selectedLi = selectedBtn.closest("li");
+    const headingText = findTextElement(headingLi, headingLi.textContent.trim());
+    const viewLabel = selectedBtn.textContent.trim();
+    if (!selectedLi || !headingText || !viewLabel) return;
+
     const heading = /** @type {HTMLElement} */ (headingLi.cloneNode(true));
-    heading.querySelector("span").textContent = "Producers";
-    const li = /** @type {HTMLElement} */ (selectedBtn.closest("li").cloneNode(true));
+    findTextElement(heading, headingText.textContent.trim()).textContent = "Producers";
+    const li = /** @type {HTMLElement} */ (selectedLi.cloneNode(true));
     const btn = li.querySelector("button");
-    // The selected view item is [icon, label, checkmark]; drop the view icon, keep the checkmark.
+    const label = btn && findTextElement(btn, viewLabel);
+    if (!label) return;
+    // The selected view item is [icon, label, checkmark]: drop what comes before the label's
+    // top-level part (the view icon) and keep what comes after it (the checkmark).
     const parts = [...btn.children];
-    const labelPart = parts.find((el) => el.querySelector("span"));
-    const check = parts[parts.length - 1] !== labelPart ? parts[parts.length - 1] : null;
+    const labelPart = parts.find((el) => el === label || el.contains(label));
+    if (!labelPart) return;
     parts.slice(0, parts.indexOf(labelPart)).forEach((el) => el.remove());
-    labelPart.querySelector("span").textContent = "Show producers";
+    const check = parts.slice(parts.indexOf(labelPart) + 1).pop() || null;
+    label.textContent = "Show producers";
     btn.setAttribute("role", "menuitemcheckbox");
     btn.dataset.prToggle = "";
     btn.removeAttribute("data-roving-interactive");
@@ -1023,7 +1050,8 @@
       btn.setAttribute("aria-checked", String(on));
       if (check) check.style.visibility = on ? "visible" : "hidden";
     });
-    menu.append(heading, li);
+    // Into the list that holds the items, which isn't always the [role="menu"] element itself.
+    (selectedLi.parentElement || menu).append(heading, li);
   }
 
   /** "albums" | "playlists" for the page in view, ignoring whether it's enabled. */
@@ -1053,12 +1081,7 @@
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = !!config[key];
-      box.addEventListener("change", () => {
-        config[key] = box.checked;
-        saveConfig();
-        currentSurface = null;
-        onNavigate();
-      });
+      box.addEventListener("change", () => setSurfaceEnabled(key, box.checked));
       row.append(text, box);
       wrap.appendChild(row);
     }
@@ -1107,7 +1130,16 @@
     }
     // Menus are portalled to <body>; only added nodes are inspected.
     const menuObserver = new MutationObserver((records) => {
-      for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1) augmentColumnsMenu(n);
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          try {
+            augmentColumnsMenu(n);
+          } catch (e) {
+            console.warn(LOG_PREFIX, "Couldn't add the Producers toggle to this menu.", e);
+          }
+        }
+      }
     });
     menuObserver.observe(document.body, { childList: true, subtree: true });
     teardown.push(() => menuObserver.disconnect());
@@ -1147,14 +1179,15 @@
 
   /**
    * Menu.Item renders through React, whose JSX runtime Spotify loads after the Platform
-   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"). No timeout: this
-   * entry is the way into settings, so waiting out a slow start beats giving up.
+   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"). React itself is
+   * waited for without a limit, as main() does.
    */
   async function registerMenuEntry() {
-    const ready = await waitFor(
-      () => Spicetify.React && Spicetify.ReactDOM && Spicetify.ReactJSX && Spicetify.ReactJSX.jsx && Spicetify.Menu && Spicetify.Menu.Item,
-    );
-    if (!ready) return;
+    if (!(await waitFor(() => Spicetify.React && Spicetify.ReactDOM && Spicetify.Menu && Spicetify.Menu.Item))) return;
+    // Spicetify builds that render menus through the JSX runtime expose Spicetify.ReactJSX; older
+    // ones don't have it at all, so give it 30s of real time and then try regardless.
+    const deadline = Date.now() + 30000;
+    if (!(await waitFor(() => (Spicetify.ReactJSX && Spicetify.ReactJSX.jsx) || Date.now() > deadline))) return;
     try {
       const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
       menuItem.register();
@@ -1165,12 +1198,13 @@
   }
 
   async function main() {
-    await waitFor(
+    const started = await waitFor(
       () =>
         Spicetify.Platform && Spicetify.Platform.History && Spicetify.Platform.PlaylistAPI &&
         Spicetify.GraphQL && Spicetify.GraphQL.Definitions && Spicetify.LocalStorage &&
         Spicetify.PopupModal && document.querySelector(SEL_MAIN_VIEW),
     );
+    if (!started || window.__producersLatest !== instanceToken) return;
     if (window.__producersExtension) window.__producersExtension.destroy();
     window.__producersExtension = { destroy, version: PR_VERSION, stats, cache };
 

@@ -22,7 +22,7 @@ Injecting into a running client skips start-up ordering, so also test a real loa
 
 - Copy `producers.js` to `%APPDATA%\spicetify\Extensions\` **and** `%APPDATA%\Spotify\Apps\xpui\extensions\`, then reload the client (`node cdp.mjs reload 10`), or run `spicetify apply`.
 - Console shows `[Producers] vX initialized` and **no** `Fatal init error` (in particular, no `reading 'jsx'`).
-- The profile menu has a **Producers** entry, and it opens the settings modal.
+- No `Couldn't add the profile-menu entry` error. (The entry itself may not show: on Spotify 1.3.3 Spicetify's profile-menu entries don't render for any extension. T6 covers the dependable way into settings.)
 - An album page shows producer cells.
 
 ## T1: Column on a wide album page
