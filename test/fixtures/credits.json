@@ -1,0 +1,414 @@
+[
+ {
+  "data": {
+   "trackUnion": {
+    "__typename": "Track",
+    "artists": {
+     "items": [
+      {
+       "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp"
+      }
+     ]
+    },
+    "creditsTrait": {
+     "contributors": {
+      "items": [
+       {
+        "name": "Your Old Droog",
+        "role": "Main Artist",
+        "roleGroup": {
+         "name": "Artist"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Lyrics",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "J-Es",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:7wZXSSsNgwss1Wq3A7bVl9",
+        "url": null
+       },
+       {
+        "name": "Emily Retsas",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:3bmjOCSu5ChN6yzK0ud9C6",
+        "url": null
+       },
+       {
+        "name": "J-Es",
+        "role": "Producer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": "spotify:artist:7wZXSSsNgwss1Wq3A7bVl9",
+        "url": null
+       },
+       {
+        "name": "Dan The Man",
+        "role": "Mixing Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Dan The Man",
+        "role": "Mastering Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Rap",
+        "roleGroup": {
+         "name": "Performers"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "J-Es",
+        "role": "Beats",
+        "roleGroup": {
+         "name": "Performers"
+        },
+        "uri": "spotify:artist:7wZXSSsNgwss1Wq3A7bVl9",
+        "url": null
+       }
+      ]
+     },
+     "sources": {
+      "items": [
+       {
+        "name": "Rem-U-Lak Records / Nature Sounds"
+       }
+      ]
+     }
+    },
+    "name": "You Know How That Go"
+   }
+  }
+ },
+ {
+  "data": {
+   "trackUnion": {
+    "__typename": "Track",
+    "artists": {
+     "items": [
+      {
+       "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp"
+      },
+      {
+       "uri": "spotify:artist:2ZP7gOOhyNip1V2YefkIXl"
+      }
+     ]
+    },
+    "creditsTrait": {
+     "contributors": {
+      "items": [
+       {
+        "name": "Your Old Droog",
+        "role": "Main Artist",
+        "roleGroup": {
+         "name": "Artist"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "Kim Hill",
+        "role": "Featured Artist",
+        "roleGroup": {
+         "name": "Artist"
+        },
+        "uri": "spotify:artist:2ZP7gOOhyNip1V2YefkIXl",
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Lyrics",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "J-Es",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:7wZXSSsNgwss1Wq3A7bVl9",
+        "url": null
+       },
+       {
+        "name": "J-Es",
+        "role": "Producer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": "spotify:artist:7wZXSSsNgwss1Wq3A7bVl9",
+        "url": null
+       },
+       {
+        "name": "Dan The Man",
+        "role": "Mixing Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Dan The Man",
+        "role": "Mastering Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Your Old Droog",
+        "role": "Rap",
+        "roleGroup": {
+         "name": "Performers"
+        },
+        "uri": "spotify:artist:20dRvQDfCTLJU0pgq13ZYp",
+        "url": null
+       },
+       {
+        "name": "Kim Hill",
+        "role": "Vocals",
+        "roleGroup": {
+         "name": "Performers"
+        },
+        "uri": "spotify:artist:2ZP7gOOhyNip1V2YefkIXl",
+        "url": null
+       }
+      ]
+     },
+     "sources": {
+      "items": [
+       {
+        "name": "Rem-U-Lak Records / Nature Sounds"
+       }
+      ]
+     }
+    },
+    "name": "Symphony"
+   }
+  }
+ },
+ {
+  "data": {
+   "trackUnion": {
+    "__typename": "Track",
+    "artists": {
+     "items": [
+      {
+       "uri": "spotify:artist:4kIwETcbpuFgRukE8o7Opx"
+      }
+     ]
+    },
+    "creditsTrait": {
+     "contributors": {
+      "items": [
+       {
+        "name": "Arlo Parks",
+        "role": "Main Artist",
+        "roleGroup": {
+         "name": "Artist"
+        },
+        "uri": "spotify:artist:4kIwETcbpuFgRukE8o7Opx",
+        "url": null
+       },
+       {
+        "name": "Anais Marinho",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:0phgd3YL1KcyR0HaTwmoOt",
+        "url": null
+       },
+       {
+        "name": "Anais Marinho",
+        "role": "Lyricist",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:0phgd3YL1KcyR0HaTwmoOt",
+        "url": null
+       },
+       {
+        "name": "David Wrench",
+        "role": "Mixing Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Anais Marinho",
+        "role": "Producer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": "spotify:artist:0phgd3YL1KcyR0HaTwmoOt",
+        "url": null
+       }
+      ]
+     },
+     "sources": {
+      "items": [
+       {
+        "name": "Transgressive"
+       }
+      ]
+     }
+    },
+    "name": "Collapsed In Sunbeams"
+   }
+  }
+ },
+ {
+  "data": {
+   "trackUnion": {
+    "__typename": "Track",
+    "artists": {
+     "items": [
+      {
+       "uri": "spotify:artist:4kIwETcbpuFgRukE8o7Opx"
+      }
+     ]
+    },
+    "creditsTrait": {
+     "contributors": {
+      "items": [
+       {
+        "name": "Arlo Parks",
+        "role": "Main Artist",
+        "roleGroup": {
+         "name": "Artist"
+        },
+        "uri": "spotify:artist:4kIwETcbpuFgRukE8o7Opx",
+        "url": null
+       },
+       {
+        "name": "Gianluca Buccellati",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:1Mrqr9usLRKWSZTnjjft93",
+        "url": "https://artists.spotify.com/songwriter/3rXMJJovziaMDuWRKpDI6f"
+       },
+       {
+        "name": "Anais Marinho",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:0phgd3YL1KcyR0HaTwmoOt",
+        "url": null
+       },
+       {
+        "name": "Claire Cottrill",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:7kJ0AysW0XVMjEnuOcqvZC",
+        "url": null
+       },
+       {
+        "name": "Alessandro Buccellati",
+        "role": "Composer",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:07hmmUq4EXcU2K2rs2yjLd",
+        "url": null
+       },
+       {
+        "name": "Anais Marinho",
+        "role": "Lyricist",
+        "roleGroup": {
+         "name": "Composition & Lyrics"
+        },
+        "uri": "spotify:artist:0phgd3YL1KcyR0HaTwmoOt",
+        "url": null
+       },
+       {
+        "name": "David Wrench",
+        "role": "Mixing Engineer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": null,
+        "url": null
+       },
+       {
+        "name": "Gianluca Buccellati",
+        "role": "Producer",
+        "roleGroup": {
+         "name": "Production & Engineering"
+        },
+        "uri": "spotify:artist:1Mrqr9usLRKWSZTnjjft93",
+        "url": null
+       }
+      ]
+     },
+     "sources": {
+      "items": [
+       {
+        "name": "Transgressive"
+       }
+      ]
+     }
+    },
+    "name": "Green Eyes"
+   }
+  }
+ }
+]

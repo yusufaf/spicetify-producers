@@ -1,0 +1,22 @@
+{
+  "name": "spicetify-producers",
+  "version": "0.0.0",
+  "description": "Show each track's producers, from Spotify's own credits, as a column on album and playlist pages.",
+  "main": "producers.js",
+  "scripts": {
+    "test": "node --check producers.js && node --test \"test/*.test.js\"",
+    "prepare": "husky"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=21"
+  },
+  "packageManager": "pnpm@10.24.0",
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "husky": "^9.1.7"
+  }
+}

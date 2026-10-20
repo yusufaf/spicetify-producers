@@ -1,0 +1,14 @@
+{
+  "name": "Producers",
+  "description": "Show each track's producers, from Spotify's own credits, as a column on album and playlist pages.",
+  "preview": "producers-column.png",
+  "main": "producers.js",
+  "readme": "README.md",
+  "authors": [
+    {
+      "name": "yusufaf",
+      "url": "https://github.com/yusufaf"
+    }
+  ],
+  "tags": ["producers", "credits", "tracklist", "albums", "playlists"]
+}
