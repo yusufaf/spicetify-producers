@@ -1087,6 +1087,28 @@
     if (styles) styles.remove();
   }
 
+  /**
+   * Menu.Item renders through React's JSX runtime, which Spotify loads after the Platform
+   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"), so wait for it.
+   */
+  async function registerMenuEntry() {
+    for (let waited = 0; !(Spicetify.ReactJSX && Spicetify.ReactJSX.jsx); waited += 100) {
+      if (waited >= 15000 || destroyed) {
+        if (!destroyed) console.warn(LOG_PREFIX, "React JSX runtime never loaded; no profile-menu entry.");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (destroyed) return;
+    try {
+      const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
+      menuItem.register();
+      teardown.push(() => menuItem.deregister());
+    } catch (e) {
+      console.error(LOG_PREFIX, "Couldn't add the profile-menu entry.", e);
+    }
+  }
+
   async function main() {
     while (
       !Spicetify.Platform || !Spicetify.Platform.History || !Spicetify.Platform.PlaylistAPI ||
@@ -1101,9 +1123,8 @@
     loadConfig();
     loadCache();
     injectStyles();
-    const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
-    menuItem.register();
-    teardown.push(() => menuItem.deregister());
+    // Not awaited: the column doesn't depend on the menu entry.
+    registerMenuEntry();
     setupObservers();
     onNavigate();
     console.log(LOG_PREFIX, `v${PR_VERSION} initialized, ${cache.size} cached tracks.`);
