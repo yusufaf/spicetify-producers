@@ -434,7 +434,8 @@
     for (let offset = 0; ; offset += 300) {
       const res = await Spicetify.GraphQL.Request(Spicetify.GraphQL.Definitions.getAlbum, {
         uri,
-        locale: Spicetify.Locale.getLocale(),
+        // Locale isn't ready on a cold start, and some Spicetify builds don't have it.
+        locale: (Spicetify.Locale && Spicetify.Locale.getLocale && Spicetify.Locale.getLocale()) || navigator.language || "en",
         limit: 300,
         offset,
       });
