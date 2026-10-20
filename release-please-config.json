@@ -4,9 +4,17 @@
     ".": {
       "release-type": "simple",
       "extra-files": [
-        { "type": "json", "path": "package.json", "jsonpath": "$.version" },
-        { "type": "generic", "path": "producers.js" }
-      ]
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "producers.js"
+        }
+      ],
+      "initial-version": "0.1.0"
     }
   }
 }
