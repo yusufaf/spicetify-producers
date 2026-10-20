@@ -214,7 +214,8 @@
       for (const row of rows) {
         if (!Array.isArray(row) || row.length !== 3 || !Array.isArray(row[2])) continue;
         const [uri, t, people] = row;
-        if (now() - t > ttlMs) continue;
+        if (typeof uri !== "string" || typeof t !== "number" || now() - t > ttlMs) continue;
+        if (!people.every((p) => Array.isArray(p) && typeof p[0] === "string" && typeof p[1] === "string")) continue;
         set(uri, people.map(([name, role, id]) => ({ name, role, uri: id ? `spotify:artist:${id}` : null })), t);
       }
     }
@@ -288,22 +289,33 @@
     if (raw) cache.load(raw);
   }
 
+  function saveCache() {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        Spicetify.LocalStorage.set(CACHE_KEY, cache.serialize());
+        return;
+      } catch (e) {
+        // localStorage is shared with Spotify; on quota errors give back half and retry.
+        cache.evictOldest(Math.ceil(cache.size / 2));
+      }
+    }
+    console.warn(LOG_PREFIX, "Couldn't save the credits cache.");
+  }
+
   // Debounced: one write per burst of fetches, not one per track.
   function scheduleCacheSave() {
-    if (saveTimer) return;
+    if (saveTimer || destroyed) return;
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          Spicetify.LocalStorage.set(CACHE_KEY, cache.serialize());
-          return;
-        } catch (e) {
-          // localStorage is shared with Spotify; on quota errors give back half and retry.
-          cache.evictOldest(Math.ceil(cache.size / 2));
-        }
-      }
-      console.warn(LOG_PREFIX, "Couldn't save the credits cache.");
+      saveCache();
     }, CACHE_SAVE_DELAY_MS);
+  }
+
+  function flushCacheSave() {
+    if (!saveTimer) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    saveCache();
   }
 
   //#endregion
@@ -337,19 +349,18 @@
   }
 
   function enqueue(uri) {
-    if (givenUp.has(uri) || cache.get(uri) !== undefined || inFlight.has(uri) || queue.includes(uri)) return;
-    queue.push(uri);
+    if (!givenUp.has(uri) && cache.get(uri) === undefined && !inFlight.has(uri) && !queue.includes(uri)) queue.push(uri);
     pump();
   }
 
   function pump() {
-    if (pumpTimer) return;
+    if (pumpTimer || destroyed) return;
     const now = Date.now();
-    while (startedAt.length && now - startedAt[0] > 60000) startedAt.shift();
+    while (startedAt.length && now - startedAt[0] >= 60000) startedAt.shift();
 
     let waitMs = 0;
     if (now < pausedUntil) waitMs = pausedUntil - now;
-    else if (startedAt.length >= MAX_PER_MINUTE) waitMs = 60000 - (now - startedAt[0]);
+    else if (startedAt.length >= MAX_PER_MINUTE) waitMs = Math.max(1, 60000 - (now - startedAt[0]));
     if (waitMs > 0) {
       pumpTimer = setTimeout(() => {
         pumpTimer = null;
@@ -367,6 +378,11 @@
       startedAt.push(Date.now());
       fetchCredits(uri)
         .then((producers) => {
+          if (failures) {
+            // A success after failures means the network is back: retry tracks that ran out of attempts.
+            givenUp.clear();
+            attempts.clear();
+          }
           failures = 0;
           cache.set(uri, producers);
           scheduleCacheSave();
@@ -437,24 +453,47 @@
   }
 
   const INDEX_REFRESH_MS = 15000;
+  const INDEX_RETRY_MS = [2000, 10000, 30000];
   let lastIndexRefresh = 0;
+  let indexRetryTimer = null;
+  let indexFailed = false;
+  /** Row keys seen without a match. A key still missing after a reload is "unmatched" for this page. */
+  let missingKeys = new Set();
+  let unmatchedKeys = new Set();
 
-  /** A row with no match usually means tracks were added to the playlist after it loaded. */
-  function refreshIndexSoon() {
+  /**
+   * A row with no match usually means tracks were added to the playlist after it loaded.
+   * Each new missing key earns at most one reload; it is never retried on this page after that.
+   */
+  function noteMissingKey(key) {
+    if (unmatchedKeys.has(key) || missingKeys.has(key)) return;
+    missingKeys.add(key);
     if (!currentSurface || Date.now() - lastIndexRefresh < INDEX_REFRESH_MS) return;
     lastIndexRefresh = Date.now();
     loadIndex(currentSurface);
   }
 
-  async function loadIndex(surface) {
+  async function loadIndex(surface, attempt = 0) {
     const token = ++indexLoadToken;
+    const asked = new Set(missingKeys);
     try {
       const tracks = surface.kind === "album" ? await loadAlbumTracks(surface.uri) : await loadPlaylistTracks(surface.uri);
-      if (token !== indexLoadToken) return;
+      if (token !== indexLoadToken || destroyed) return;
       trackIndex = buildTrackIndex(tracks);
+      for (const key of asked) if (!trackIndex.has(key)) unmatchedKeys.add(key);
+      missingKeys = new Set([...missingKeys].filter((k) => !asked.has(k)));
       scheduleInject();
     } catch (e) {
+      if (token !== indexLoadToken || destroyed) return;
       console.warn(LOG_PREFIX, "Couldn't load this page's tracks.", e);
+      if (attempt < INDEX_RETRY_MS.length) {
+        indexRetryTimer = setTimeout(() => {
+          if (currentSurface && currentSurface.uri === surface.uri) loadIndex(surface, attempt + 1);
+        }, INDEX_RETRY_MS[attempt]);
+      } else {
+        indexFailed = true;
+        scheduleInject();
+      }
     }
   }
 
@@ -465,6 +504,10 @@
     if (same) return scheduleInject();
 
     trackIndex = new Map();
+    missingKeys = new Set();
+    unmatchedKeys = new Set();
+    indexFailed = false;
+    clearTimeout(indexRetryTimer);
     queue = [];
     closePopover();
     scheduleInject();
@@ -521,6 +564,11 @@
     for (const type of ["click", "dblclick", "mousedown", "pointerdown"]) {
       el.addEventListener(type, (e) => e.stopPropagation());
     }
+    // Enter/Space would otherwise reach the row's key handler (play/select); the element's own
+    // default action (click) still runs.
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+    });
     el.setAttribute("draggable", "false");
     el.addEventListener("dragstart", (e) => {
       e.preventDefault();
@@ -548,18 +596,26 @@
     return a;
   }
 
+  const STATE_TEXT = { loading: "…", none: "—", error: "?" };
+  const STATE_TITLE = {
+    loading: "Loading credits…",
+    none: "Spotify lists no producer for this track",
+    error: "Couldn't load credits for this track",
+  };
+
   /**
-   * Fills a cell (column or inline span) for one track. `state` is
-   * "loading" | "none" | "done".
+   * Fills a cell (column or inline span) for one track.
    * @param {HTMLElement} el
-   * @param {"loading"|"none"|"done"} state
+   * @param {"loading"|"none"|"error"|"done"} state
    * @param {Producer[]} producers
    */
   function fillProducers(el, state, producers) {
     el.textContent = "";
+    el.removeAttribute("title");
     if (state !== "done") {
       el.classList.add("pr-muted");
-      el.textContent = state === "loading" ? "…" : "—";
+      el.textContent = STATE_TEXT[state];
+      el.title = STATE_TITLE[state];
       return;
     }
     el.classList.remove("pr-muted");
@@ -585,9 +641,16 @@
     }
   }
 
+  /** @returns {{ state: "loading"|"none"|"error"|"done", producers: Producer[] }} */
+  function rowState(key, uri) {
+    if (!trackIndex.size) return { state: indexFailed ? "error" : "loading", producers: [] };
+    if (!uri) return { state: unmatchedKeys.has(key) ? "error" : "loading", producers: [] };
+    return stateFor(uri);
+  }
+
   function stateFor(uri) {
-    if (!uri) return { state: "none", producers: [] };
-    if (!uri.startsWith("spotify:track:") || givenUp.has(uri)) return { state: "none", producers: [] };
+    if (!uri.startsWith("spotify:track:")) return { state: "none", producers: [] };
+    if (givenUp.has(uri)) return { state: "error", producers: [] };
     const cached = cache.get(uri);
     if (cached === undefined) return { state: "loading", producers: [] };
     return cached.length ? { state: "done", producers: cached } : { state: "none", producers: [] };
@@ -597,12 +660,12 @@
     const info = readRow(row);
     if (!info) return;
     const uri = trackIndex.get(info.key) || null;
-    if (!uri && trackIndex.size) refreshIndexSoon();
+    if (!uri && trackIndex.size) noteMissingKey(info.key);
     if (uri && uri.startsWith("spotify:track:")) {
       wanted.add(uri);
       enqueue(uri);
     }
-    const { state, producers } = trackIndex.size ? stateFor(uri) : { state: "loading", producers: [] };
+    const { state, producers } = rowState(info.key, uri);
     const stamp = `${mode}|${uri}|${state}|${producers.length}`;
 
     const existingCell = row.querySelector(":scope .pr-cell");
@@ -688,9 +751,22 @@
     if (el) el.textContent = "";
   }
 
+  let observedGrid = null;
+  // Resizing a column rewrites only the grid's inline --grid-template-columns, which the subtree
+  // observer doesn't watch, so our !important copy would go stale. We never write grid.style.
+  const gridStyleObserver = new MutationObserver(scheduleInject);
+
+  function watchGridStyle(grid) {
+    if (grid === observedGrid) return;
+    gridStyleObserver.disconnect();
+    observedGrid = grid;
+    if (grid) gridStyleObserver.observe(grid, { attributes: true, attributeFilter: ["style"] });
+  }
+
   function injectAll() {
     const mainView = document.querySelector(SEL_MAIN_VIEW);
     const grid = currentSurface && mainView && mainView.querySelector(SEL_GRID);
+    watchGridStyle(grid || null);
     if (!grid) {
       wanted = new Set();
       clearAll();
@@ -710,7 +786,7 @@
 
   let injectTimer = null;
   function scheduleInject() {
-    if (injectTimer) return;
+    if (injectTimer || destroyed) return;
     injectTimer = setTimeout(() => {
       injectTimer = null;
       try {
@@ -960,6 +1036,7 @@
 
   /** @type {(() => void)[]} */
   const teardown = [];
+  let destroyed = false;
 
   function setupObservers() {
     const main = document.querySelector(SEL_MAIN_VIEW);
@@ -995,9 +1072,13 @@
 
   /** Removes everything this instance added, so a re-injected copy (live testing) starts clean. */
   function destroy() {
+    destroyed = true;
     teardown.splice(0).forEach((fn) => fn());
+    gridStyleObserver.disconnect();
     clearTimeout(injectTimer);
     clearTimeout(pumpTimer);
+    clearTimeout(indexRetryTimer);
+    flushCacheSave();
     queue = [];
     closePopover();
     clearAll();

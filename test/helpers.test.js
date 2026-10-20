@@ -81,3 +81,16 @@ test("cache survives a save/load round trip and drops stale or malformed rows", 
   c.load('[["x"], 7, null]');
   assert.equal(c.size, 0);
 });
+
+test("cache load skips rows with malformed people instead of throwing", () => {
+  const cache = createCache();
+  const now = Date.now();
+  cache.load(JSON.stringify([
+    ["spotify:track:bad1", now, [null]],
+    ["spotify:track:bad2", now, ["Name only"]],
+    [42, now, []],
+    ["spotify:track:good", now, [["A", "Producer", null]]],
+  ]));
+  assert.equal(cache.size, 1);
+  assert.deepEqual(cache.get("spotify:track:good"), [p("A")]);
+});
