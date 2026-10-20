@@ -19,6 +19,8 @@ Husky runs `pnpm test` on pre-commit and commitlint (config-conventional) on com
 
 Use the `spicetify-live-test` skill. The extension can be evaluated straight into a running client over CDP without `spicetify apply`. Re-evaluating is safe: `main()` calls `window.__producersExtension.destroy()` on any previous instance first. `tests.live.md` lists the scenarios.
 
+**Injection can't catch start-up bugs.** By the time you inject, Spotify has loaded everything; on a cold start it hasn't. Spotify loads React's JSX runtime (`Spicetify.ReactJSX`) *after* the Platform APIs, so anything React-backed (`Menu.Item`, `PopupModal`) must wait for it. v0.1.0 shipped crashing on start-up for exactly this reason. Before a release, also run T0 in `tests.live.md`: install the file and reload the client.
+
 ## Architecture
 
 **Data.** Credits come from `Spicetify.GraphQL.Definitions.queryTrackCreditsGroupedModal` with `{ trackUri }`. The response is `data.trackUnion.creditsTrait.contributors.items[] = { name, role, roleGroup: { name }, uri, url }`. Roles are English display strings with no stable key; `PRODUCER_ROLES` lists the ones that count. The older `queryTrackCreditsModal` no longer exists on Spotify 1.3.x. **Never call `api.spotify.com`** (the Web API): the client token gets 429s there.
@@ -29,13 +31,13 @@ Use the `spicetify-live-test` skill. The extension can be evaluated straight int
 
 **Two display modes**, picked by grid width (`COLUMN_MIN_GRID_WIDTH`), not `aria-colcount`, which also drops when the user hides native columns:
 - *column*: an `!important` stylesheet rule on `.pr-active` rewrites `--grid-template-columns` (inline on the grid, React-owned) with a `[producers]` track before `[last]`. Cells are placed with `grid-column: producers`, so DOM order doesn't matter when React inserts newly enabled native columns.
-- *inline*: a `.pr-inline` span appended to the artist line, re-appended on every render (React can append artist links after it). The subtitle is flexed via `div:has(> .pr-inline:not(:empty))` so no React-owned attribute is touched.
+- *inline*: a `.pr-inline` span appended to the artist line, re-appended on every render (React can append artist links after it). The subtitle (a div or a span, depending on the build) is flexed via `:has(> .pr-inline:not(:empty))` so no React-owned attribute is touched.
 
 **Idempotency.** Each injected node carries `data-pr-stamp = mode|uri|state|count`. A render pass that finds a matching stamp does nothing, so the MutationObserver firing on our own writes settles after one no-op pass. Observers watch `childList` plus `aria-colcount` only; never other attributes.
 
 **Fetch queue.** At most `MAX_CONCURRENT` in flight and `MAX_PER_MINUTE` started per minute. `wanted` is rebuilt each render pass from the rows on screen, and queued URIs not in it are dropped, which is what keeps fast scrolling cheap. A failure backs off the whole queue exponentially; after `MAX_ATTEMPTS` a track is given up for the session (not cached). Successful results, including `[]` ("no producers"), go in the LRU/TTL cache.
 
-**Columns menu.** `augmentColumnsMenu` watches `<body>` for Spotify's Columns menu (`button[role="menuitemcheckbox"][data-column]`) and clones an item as `data-column="PR_PRODUCERS"`. The clone has no React props, so our click listener owns it.
+**List menu toggle.** `augmentColumnsMenu` watches `<body>` for the menu behind the tracklist's List button. If it has column checkboxes (`button[role="menuitemcheckbox"][data-column]`) it clones one. Otherwise ("View as" only) it appends a heading and a "Show producers" item cloned from the selected `menuitemradio`, reusing its checkmark. Clones have no React props, so our click listener owns them. This is the dependable way into settings: on Spotify 1.3.3, Spicetify's profile-menu entries don't render for any extension.
 
 ### Storage keys
 

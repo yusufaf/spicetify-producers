@@ -50,10 +50,10 @@ Requires [Spicetify](https://spicetify.app/docs/getting-started), installed and 
 
 ## Settings
 
-There are two switches, **Show on album pages** and **Show on playlist pages**, both on by default. You can flip them in either place:
+There are two switches, **Show on album pages** and **Show on playlist pages**, both on by default.
 
-- **Columns menu:** click **List** above any album or playlist tracklist. **Producers** sits under **Columns** next to Spotify's own entries and switches the page type you're on.
-- **Profile menu:** click your avatar (top right) and choose **Producers**.
+- **List menu:** click **List** (or **Compact**) above any album or playlist tracklist. Under **Producers**, **Show producers** switches the page type you're on. Where Spotify shows a **Columns** section in that menu, it appears there as a **Producers** checkbox instead.
+- **Profile menu:** click your avatar (top right) and choose **Producers**. On some Spotify versions (1.3.3, for one) Spicetify can't add entries to this menu for any extension, so the List menu is the dependable way in.
 
 ## Good to know
 

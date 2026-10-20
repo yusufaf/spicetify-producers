@@ -911,9 +911,13 @@
       /* Inline mode: Spotify's subtitle is a one-line ellipsis block, which would hide anything appended
          at its end. Flex it (via :has, so no React-owned attribute changes) and let each artist link
          ellipsize on its own while the producers keep their space. */
-      [role="gridcell"] div:has(> .pr-inline:not(:empty)) { display: flex; align-items: baseline; min-width: 0; white-space: pre; }
-      [role="gridcell"] div:has(> .pr-inline:not(:empty)) > a { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
-      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+      /* Any tag: Spotify renders this container as a div or a span depending on the build/layout.
+         !important so a theme restyling it can't push the producers out of view. */
+      [role="gridcell"] :has(> .pr-inline:not(:empty)) { display: flex !important; align-items: baseline; min-width: 0; white-space: pre !important; }
+      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+      /* Artist links don't shrink (each is capped at 60%), so the producers give up space first and the
+         artists, Spotify's own info, stay readable. With many artists the producers drop out of view. */
+      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: 10ch; white-space: nowrap; overflow: hidden; }
       .pr-inline:empty { display: none; }
       .pr-inline-sep { flex: none; white-space: pre; }
       .pr-inline-body { display: inline-flex; align-items: baseline; min-width: 0; gap: 4px; }
@@ -935,9 +939,14 @@
   //#region Spotify's "Columns" menu
 
   /**
-   * Adds a "Producers" checkbox to Spotify's own Columns menu (List button -> Columns),
-   * cloned from one of its items so it looks native. The clone has no React props, so
-   * Spotify's delegated handlers ignore it and our listener owns the click.
+   * Puts a Producers toggle in the menu behind the List button above the tracklist. That's the
+   * one dependable way into the settings: on Spotify 1.3.3 Spicetify's profile-menu entries
+   * don't render for any extension. The menu has two shapes:
+   *  - wide tracklist: "View as" plus a "Columns" section of checkboxes. We clone a column item.
+   *  - narrow tracklist: "View as" only. We add a "Producers" heading and a checkmark item,
+   *    cloned from the selected view item so it reuses Spotify's own checkmark.
+   * Clones carry no React props, so Spotify's delegated handlers ignore them and our listener
+   * owns the click.
    * @param {Element} added
    */
   function augmentColumnsMenu(added) {
@@ -945,40 +954,76 @@
     if (!surface) return;
     const menus = added.matches('[role="menu"]') ? [added] : [...added.querySelectorAll('[role="menu"]')];
     for (const menu of menus) {
-      const items = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
-      if (!items.length || menu.querySelector('[data-column="PR_PRODUCERS"]')) continue;
-      const templateLi = items[items.length - 1].closest("li");
-      if (!templateLi) continue;
-      const li = /** @type {HTMLElement} */ (templateLi.cloneNode(true));
-      const btn = li.querySelector("button");
-      const input = li.querySelector('input[type="checkbox"]');
-      const label = li.querySelector("label");
-      const text = btn.querySelector("span");
-      btn.dataset.column = "PR_PRODUCERS";
-      btn.setAttribute("aria-label", "Producers");
-      if (text) text.textContent = "Producers";
-      if (input) {
-        input.id = "column-visibility-PR_PRODUCERS";
-        input.setAttribute("aria-label", "Producers");
+      if (menu.querySelector('[data-pr-toggle]')) continue;
+      const columnItems = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
+      if (columnItems.length) addColumnCheckbox(columnItems[columnItems.length - 1], surface);
+      else {
+        const viewItem = menu.querySelector('button[role="menuitemradio"][aria-checked="true"]');
+        const heading = menu.querySelector("li > span");
+        if (viewItem && heading) addViewMenuToggle(menu, heading.closest("li"), viewItem, surface);
       }
-      if (label) label.htmlFor = "column-visibility-PR_PRODUCERS";
-      const sync = () => {
-        const on = !!config[surface];
-        btn.setAttribute("aria-checked", String(on));
-        if (input) input.checked = on;
-      };
-      sync();
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        config[surface] = !config[surface];
-        saveConfig();
-        sync();
-        currentSurface = null;
-        onNavigate();
-      });
-      templateLi.after(li);
     }
+  }
+
+  function bindToggle(btn, surface, sync) {
+    sync();
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      config[surface] = !config[surface];
+      saveConfig();
+      sync();
+      currentSurface = null;
+      onNavigate();
+    });
+  }
+
+  function addColumnCheckbox(templateBtn, surface) {
+    const templateLi = templateBtn.closest("li");
+    if (!templateLi) return;
+    const li = /** @type {HTMLElement} */ (templateLi.cloneNode(true));
+    const btn = li.querySelector("button");
+    const input = li.querySelector('input[type="checkbox"]');
+    const label = li.querySelector("label");
+    const text = btn.querySelector("span");
+    btn.dataset.column = "PR_PRODUCERS";
+    btn.dataset.prToggle = "";
+    btn.setAttribute("aria-label", "Producers");
+    if (text) text.textContent = "Producers";
+    if (input) {
+      input.id = "column-visibility-PR_PRODUCERS";
+      input.setAttribute("aria-label", "Producers");
+    }
+    if (label) label.htmlFor = "column-visibility-PR_PRODUCERS";
+    bindToggle(btn, surface, () => {
+      const on = !!config[surface];
+      btn.setAttribute("aria-checked", String(on));
+      if (input) input.checked = on;
+    });
+    templateLi.after(li);
+  }
+
+  function addViewMenuToggle(menu, headingLi, selectedBtn, surface) {
+    const heading = /** @type {HTMLElement} */ (headingLi.cloneNode(true));
+    heading.querySelector("span").textContent = "Producers";
+    const li = /** @type {HTMLElement} */ (selectedBtn.closest("li").cloneNode(true));
+    const btn = li.querySelector("button");
+    // The selected view item is [icon, label, checkmark]; drop the view icon, keep the checkmark.
+    const parts = [...btn.children];
+    const labelPart = parts.find((el) => el.querySelector("span"));
+    const check = parts[parts.length - 1] !== labelPart ? parts[parts.length - 1] : null;
+    parts.slice(0, parts.indexOf(labelPart)).forEach((el) => el.remove());
+    labelPart.querySelector("span").textContent = "Show producers";
+    btn.setAttribute("role", "menuitemcheckbox");
+    btn.dataset.prToggle = "";
+    btn.removeAttribute("data-roving-interactive");
+    btn.tabIndex = -1;
+    bindToggle(btn, surface, () => {
+      const on = !!config[surface];
+      btn.setAttribute("aria-checked", String(on));
+      if (check) check.style.visibility = on ? "visible" : "hidden";
+    });
+    menu.append(heading, li);
   }
 
   /** "albums" | "playlists" for the page in view, ignoring whether it's enabled. */
@@ -1088,18 +1133,28 @@
   }
 
   /**
-   * Menu.Item renders through React's JSX runtime, which Spotify loads after the Platform
-   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"), so wait for it.
+   * Polls until `ready()` holds. Resolves false if this instance is destroyed first (a
+   * re-injected copy took over), so callers can bail out instead of touching the page.
+   * @param {() => any} ready
    */
-  async function registerMenuEntry() {
-    for (let waited = 0; !(Spicetify.ReactJSX && Spicetify.ReactJSX.jsx); waited += 100) {
-      if (waited >= 15000 || destroyed) {
-        if (!destroyed) console.warn(LOG_PREFIX, "React JSX runtime never loaded; no profile-menu entry.");
-        return;
-      }
+  async function waitFor(ready) {
+    while (!ready()) {
+      if (destroyed) return false;
       await new Promise((r) => setTimeout(r, 100));
     }
-    if (destroyed) return;
+    return !destroyed;
+  }
+
+  /**
+   * Menu.Item renders through React, whose JSX runtime Spotify loads after the Platform
+   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"). No timeout: this
+   * entry is the way into settings, so waiting out a slow start beats giving up.
+   */
+  async function registerMenuEntry() {
+    const ready = await waitFor(
+      () => Spicetify.React && Spicetify.ReactDOM && Spicetify.ReactJSX && Spicetify.ReactJSX.jsx && Spicetify.Menu && Spicetify.Menu.Item,
+    );
+    if (!ready) return;
     try {
       const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
       menuItem.register();
@@ -1110,13 +1165,12 @@
   }
 
   async function main() {
-    while (
-      !Spicetify.Platform || !Spicetify.Platform.History || !Spicetify.Platform.PlaylistAPI ||
-      !Spicetify.GraphQL || !Spicetify.GraphQL.Definitions || !Spicetify.LocalStorage ||
-      !Spicetify.Menu || !Spicetify.PopupModal || !document.querySelector(SEL_MAIN_VIEW)
-    ) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    await waitFor(
+      () =>
+        Spicetify.Platform && Spicetify.Platform.History && Spicetify.Platform.PlaylistAPI &&
+        Spicetify.GraphQL && Spicetify.GraphQL.Definitions && Spicetify.LocalStorage &&
+        Spicetify.PopupModal && document.querySelector(SEL_MAIN_VIEW),
+    );
     if (window.__producersExtension) window.__producersExtension.destroy();
     window.__producersExtension = { destroy, version: PR_VERSION, stats, cache };
 
