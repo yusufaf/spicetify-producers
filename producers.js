@@ -1,7 +1,7 @@
 // NAME: Producers
 // AUTHOR: yusufaf
 // x-release-please-start-version
-// VERSION: 0.1.0
+// VERSION: 0.1.1
 // x-release-please-end-version
 // DESCRIPTION: Show each track's producers, from Spotify's own credits, as a column on album and playlist pages.
 //
@@ -20,7 +20,7 @@
   //#region Constants
 
   // x-release-please-start-version
-  const PR_VERSION = "0.1.0";
+  const PR_VERSION = "0.1.1";
   // x-release-please-end-version
 
   const PR_GITHUB_REPO = "yusufaf/spicetify-producers";
