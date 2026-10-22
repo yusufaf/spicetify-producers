@@ -12,6 +12,11 @@
 (function Producers() {
   "use strict";
 
+  // Claimed synchronously at evaluation, so if two copies are both still waiting to start
+  // (installed file + a re-injected one), the newest evaluated one wins rather than the slowest.
+  const instanceToken = {};
+  if (typeof window !== "undefined") window.__producersLatest = instanceToken;
+
   //#region Constants
 
   // x-release-please-start-version
@@ -424,12 +429,28 @@
     return { kind, uri: `spotify:${kind}:${m[2]}` };
   }
 
+  /**
+   * Spicetify.Locale loads late on a cold start (and some builds lack it), so wait briefly. The
+   * fallback is the primary subtag: navigator.language can be "en-Latn-US", not Spotify's "en".
+   */
+  let localeWaited = false;
+  async function spotifyLocale() {
+    if (!localeWaited) {
+      const deadline = Date.now() + 5000;
+      await waitFor(() => (Spicetify.Locale && Spicetify.Locale.getLocale) || Date.now() > deadline);
+      localeWaited = true;
+    }
+    const locale = Spicetify.Locale && Spicetify.Locale.getLocale && Spicetify.Locale.getLocale();
+    return locale || (navigator.language || "en").split("-")[0];
+  }
+
   async function loadAlbumTracks(uri) {
     const tracks = [];
+    const locale = await spotifyLocale();
     for (let offset = 0; ; offset += 300) {
       const res = await Spicetify.GraphQL.Request(Spicetify.GraphQL.Definitions.getAlbum, {
         uri,
-        locale: Spicetify.Locale.getLocale(),
+        locale,
         limit: 300,
         offset,
       });
@@ -911,9 +932,15 @@
       /* Inline mode: Spotify's subtitle is a one-line ellipsis block, which would hide anything appended
          at its end. Flex it (via :has, so no React-owned attribute changes) and let each artist link
          ellipsize on its own while the producers keep their space. */
-      [role="gridcell"] div:has(> .pr-inline:not(:empty)) { display: flex; align-items: baseline; min-width: 0; white-space: pre; }
-      [role="gridcell"] div:has(> .pr-inline:not(:empty)) > a { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
-      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+      /* Any tag: Spotify renders this container as a div or a span depending on the build/layout.
+         !important so a theme restyling it can't push the producers out of view. */
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) { display: flex !important; align-items: baseline; min-width: 0; overflow: hidden; white-space: pre !important; }
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) > a { flex: 0 0.05 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) > a:only-of-type { flex-shrink: 0; max-width: 70%; }
+      /* Flex shrink is weighted by width, so several artist links get a near-zero factor and a lone
+         artist (capped at 70%) none: the producers give up space first, down to 10ch or the 30% a
+         lone artist leaves, and the artists, Spotify's own info, stay readable. */
+      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: min(10ch, 30%); white-space: nowrap; overflow: hidden; }
       .pr-inline:empty { display: none; }
       .pr-inline-sep { flex: none; white-space: pre; }
       .pr-inline-body { display: inline-flex; align-items: baseline; min-width: 0; gap: 4px; }
@@ -935,9 +962,14 @@
   //#region Spotify's "Columns" menu
 
   /**
-   * Adds a "Producers" checkbox to Spotify's own Columns menu (List button -> Columns),
-   * cloned from one of its items so it looks native. The clone has no React props, so
-   * Spotify's delegated handlers ignore it and our listener owns the click.
+   * Puts a Producers toggle in the menu behind the List button above the tracklist. That's the
+   * one dependable way into the settings: on Spotify 1.3.3 Spicetify's profile-menu entries
+   * don't render for any extension. The menu has two shapes:
+   *  - wide tracklist: "View as" plus a "Columns" section of checkboxes. We clone a column item.
+   *  - narrow tracklist: "View as" only. We add a "Producers" heading and a checkmark item,
+   *    cloned from the selected view item so it reuses Spotify's own checkmark.
+   * Clones carry no React props, so Spotify's delegated handlers ignore them and our listener
+   * owns the click.
    * @param {Element} added
    */
   function augmentColumnsMenu(added) {
@@ -945,40 +977,103 @@
     if (!surface) return;
     const menus = added.matches('[role="menu"]') ? [added] : [...added.querySelectorAll('[role="menu"]')];
     for (const menu of menus) {
-      const items = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
-      if (!items.length || menu.querySelector('[data-column="PR_PRODUCERS"]')) continue;
-      const templateLi = items[items.length - 1].closest("li");
-      if (!templateLi) continue;
-      const li = /** @type {HTMLElement} */ (templateLi.cloneNode(true));
-      const btn = li.querySelector("button");
-      const input = li.querySelector('input[type="checkbox"]');
-      const label = li.querySelector("label");
-      const text = btn.querySelector("span");
-      btn.dataset.column = "PR_PRODUCERS";
-      btn.setAttribute("aria-label", "Producers");
-      if (text) text.textContent = "Producers";
-      if (input) {
-        input.id = "column-visibility-PR_PRODUCERS";
-        input.setAttribute("aria-label", "Producers");
+      if (menu.querySelector("[data-pr-toggle]")) continue;
+      const columnItems = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
+      if (columnItems.length) addColumnCheckbox(columnItems[columnItems.length - 1], surface);
+      else {
+        // Only the tracklist's own List button's menu: its aria-controls names the menu's id. Other
+        // menus with the same shape (Your Library's sort menu) are left alone.
+        const main = document.querySelector(SEL_MAIN_VIEW);
+        if (!menu.id || !main || !main.querySelector(`[aria-controls="${CSS.escape(menu.id)}"]`)) continue;
+        // On playlists "Sort by" comes before "View as"; the last checked radio is the view item.
+        const checked = menu.querySelectorAll('button[role="menuitemradio"][aria-checked="true"]');
+        const heading = menu.querySelector("li > span");
+        if (checked.length && heading) addViewMenuToggle(menu, heading.closest("li"), checked[checked.length - 1], surface);
       }
-      if (label) label.htmlFor = "column-visibility-PR_PRODUCERS";
-      const sync = () => {
-        const on = !!config[surface];
-        btn.setAttribute("aria-checked", String(on));
-        if (input) input.checked = on;
-      };
-      sync();
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        config[surface] = !config[surface];
-        saveConfig();
-        sync();
-        currentSurface = null;
-        onNavigate();
-      });
-      templateLi.after(li);
     }
+  }
+
+  /** The one place a page-type switch changes: settings modal and List-menu toggles both go here. */
+  function setSurfaceEnabled(surface, on) {
+    config[surface] = on;
+    saveConfig();
+    currentSurface = null;
+    onNavigate();
+  }
+
+  function bindToggle(btn, surface, sync) {
+    sync();
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (destroyed) return;
+      setSurfaceEnabled(surface, !config[surface]);
+      sync();
+    });
+  }
+
+  function addColumnCheckbox(templateBtn, surface) {
+    const templateLi = templateBtn.closest("li");
+    if (!templateLi) return;
+    const li = /** @type {HTMLElement} */ (templateLi.cloneNode(true));
+    const btn = li.querySelector("button");
+    const input = li.querySelector('input[type="checkbox"]');
+    const label = li.querySelector("label");
+    const text = btn.querySelector("span");
+    btn.dataset.column = "PR_PRODUCERS";
+    btn.dataset.prToggle = "";
+    btn.setAttribute("aria-label", "Producers");
+    if (text) text.textContent = "Producers";
+    if (input) {
+      input.id = "column-visibility-PR_PRODUCERS";
+      input.setAttribute("aria-label", "Producers");
+    }
+    if (label) label.htmlFor = "column-visibility-PR_PRODUCERS";
+    bindToggle(btn, surface, () => {
+      const on = !!config[surface];
+      btn.setAttribute("aria-checked", String(on));
+      if (input) input.checked = on;
+    });
+    templateLi.after(li);
+  }
+
+  /** The deepest element under `root` whose own text is `text`. */
+  function findTextElement(root, text) {
+    return [...root.querySelectorAll("*")].reverse().find((el) => directTextContent(el).trim() === text) || null;
+  }
+
+  function addViewMenuToggle(menu, headingLi, selectedBtn, surface) {
+    const selectedLi = selectedBtn.closest("li");
+    const headingText = findTextElement(headingLi, headingLi.textContent.trim());
+    const viewLabel = selectedBtn.textContent.trim();
+    if (!selectedLi || !headingText || !viewLabel) return;
+
+    const heading = /** @type {HTMLElement} */ (headingLi.cloneNode(true));
+    heading.dataset.prHeading = "";
+    findTextElement(heading, headingText.textContent.trim()).textContent = "Producers";
+    const li = /** @type {HTMLElement} */ (selectedLi.cloneNode(true));
+    const btn = li.querySelector("button");
+    const label = btn && findTextElement(btn, viewLabel);
+    if (!label) return;
+    // The selected view item is [icon, label, checkmark]: drop what comes before the label's
+    // top-level part (the view icon) and keep what comes after it (the checkmark).
+    const parts = [...btn.children];
+    const labelPart = parts.find((el) => el === label || el.contains(label));
+    if (!labelPart) return;
+    parts.slice(0, parts.indexOf(labelPart)).forEach((el) => el.remove());
+    const check = parts.slice(parts.indexOf(labelPart) + 1).pop() || null;
+    label.textContent = "Show producers";
+    btn.setAttribute("role", "menuitemcheckbox");
+    btn.dataset.prToggle = "";
+    btn.removeAttribute("data-roving-interactive");
+    btn.tabIndex = -1;
+    bindToggle(btn, surface, () => {
+      const on = !!config[surface];
+      btn.setAttribute("aria-checked", String(on));
+      if (check) check.style.visibility = on ? "visible" : "hidden";
+    });
+    // Into the list that holds the items, which isn't always the [role="menu"] element itself.
+    (selectedLi.parentElement || menu).append(heading, li);
   }
 
   /** "albums" | "playlists" for the page in view, ignoring whether it's enabled. */
@@ -1008,12 +1103,7 @@
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = !!config[key];
-      box.addEventListener("change", () => {
-        config[key] = box.checked;
-        saveConfig();
-        currentSurface = null;
-        onNavigate();
-      });
+      box.addEventListener("change", () => setSurfaceEnabled(key, box.checked));
       row.append(text, box);
       wrap.appendChild(row);
     }
@@ -1062,7 +1152,16 @@
     }
     // Menus are portalled to <body>; only added nodes are inspected.
     const menuObserver = new MutationObserver((records) => {
-      for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1) augmentColumnsMenu(n);
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          try {
+            augmentColumnsMenu(n);
+          } catch (e) {
+            console.warn(LOG_PREFIX, "Couldn't add the Producers toggle to this menu.", e);
+          }
+        }
+      }
     });
     menuObserver.observe(document.body, { childList: true, subtree: true });
     teardown.push(() => menuObserver.disconnect());
@@ -1082,28 +1181,64 @@
     queue = [];
     closePopover();
     clearAll();
+    // Toggles in a menu that's still open would otherwise outlive this instance.
+    document.querySelectorAll("[data-pr-heading]").forEach((el) => el.remove());
+    document.querySelectorAll("[data-pr-toggle]").forEach((el) => (el.closest("li") || el).remove());
     if (popoverEl) popoverEl.remove();
     const styles = document.getElementById(STYLE_ID);
     if (styles) styles.remove();
   }
 
-  async function main() {
-    while (
-      !Spicetify.Platform || !Spicetify.Platform.History || !Spicetify.Platform.PlaylistAPI ||
-      !Spicetify.GraphQL || !Spicetify.GraphQL.Definitions || !Spicetify.LocalStorage ||
-      !Spicetify.Menu || !Spicetify.PopupModal || !document.querySelector(SEL_MAIN_VIEW)
-    ) {
+  /**
+   * Polls until `ready()` holds. Resolves false if this instance is destroyed first (a
+   * re-injected copy took over), so callers can bail out instead of touching the page.
+   * @param {() => any} ready
+   */
+  async function waitFor(ready) {
+    while (!ready()) {
+      // A newer evaluated copy (re-injection over the installed file) supersedes this one.
+      if (destroyed || window.__producersLatest !== instanceToken) return false;
       await new Promise((r) => setTimeout(r, 100));
     }
+    return !destroyed;
+  }
+
+  /**
+   * Menu.Item renders through React, whose JSX runtime Spotify loads after the Platform
+   * APIs on a cold start (constructing it earlier throws "reading 'jsx'"). React itself is
+   * waited for without a limit, as main() does.
+   */
+  async function registerMenuEntry() {
+    if (!(await waitFor(() => Spicetify.React && Spicetify.ReactDOM && Spicetify.Menu && Spicetify.Menu.Item))) return;
+    // Spicetify builds that render menus through the JSX runtime expose Spicetify.ReactJSX; older
+    // ones don't have it at all, so give it 30s of real time and then try regardless.
+    const deadline = Date.now() + 30000;
+    if (!(await waitFor(() => (Spicetify.ReactJSX && Spicetify.ReactJSX.jsx) || Date.now() > deadline))) return;
+    try {
+      const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
+      menuItem.register();
+      teardown.push(() => menuItem.deregister());
+    } catch (e) {
+      console.error(LOG_PREFIX, "Couldn't add the profile-menu entry.", e);
+    }
+  }
+
+  async function main() {
+    const started = await waitFor(
+      () =>
+        Spicetify.Platform && Spicetify.Platform.History && Spicetify.Platform.PlaylistAPI &&
+        Spicetify.GraphQL && Spicetify.GraphQL.Definitions && Spicetify.LocalStorage &&
+        Spicetify.PopupModal && document.querySelector(SEL_MAIN_VIEW),
+    );
+    if (!started || window.__producersLatest !== instanceToken) return;
     if (window.__producersExtension) window.__producersExtension.destroy();
     window.__producersExtension = { destroy, version: PR_VERSION, stats, cache };
 
     loadConfig();
     loadCache();
     injectStyles();
-    const menuItem = new Spicetify.Menu.Item("Producers", false, openSettings);
-    menuItem.register();
-    teardown.push(() => menuItem.deregister());
+    // Not awaited: the column doesn't depend on the menu entry.
+    registerMenuEntry();
     setupObservers();
     onNavigate();
     console.log(LOG_PREFIX, `v${PR_VERSION} initialized, ${cache.size} cached tracks.`);

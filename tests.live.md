@@ -16,6 +16,15 @@ Use the `spicetify-live-test` skill for CDP mechanics (eval, screenshot, console
 2. Inject or reload; console (filter `Producers`) shows `[Producers] vX initialized, N cached tracks.` and no `[Producers]` errors.
 3. Open an album; screenshot.
 
+## T0: Cold start (before every release)
+
+Injecting into a running client skips start-up ordering, so also test a real load:
+
+- Copy `producers.js` to `%APPDATA%\spicetify\Extensions\` **and** `%APPDATA%\Spotify\Apps\xpui\extensions\`, then reload the client (`node cdp.mjs reload 10`), or run `spicetify apply`.
+- Console shows `[Producers] vX initialized` and **no** `Fatal init error` (in particular, no `reading 'jsx'`).
+- No `Couldn't add the profile-menu entry` error. (The entry itself may not show: on Spotify 1.3.3 Spicetify's profile-menu entries don't render for any extension. T6 covers the dependable way into settings.)
+- An album page shows producer cells.
+
 ## T1: Column on a wide album page
 
 - Open an album with the window wide (tracklist ≥ 900px).
@@ -47,9 +56,9 @@ Use the `spicetify-live-test` skill for CDP mechanics (eval, screenshot, console
 - Turn on one of Spotify's own columns (List → Columns, e.g. Plays on an album).
 - The Producers cell stays under its header (it's placed by `grid-column: producers`).
 
-## T6: Columns menu toggle
+## T6: List-menu toggle
 
-- List → Columns shows a **Producers** checkbox matching the setting for this page type.
+- Click **List** above the tracklist. Narrow, or no Columns section: a **Producers** heading with **Show producers** (checkmark when on). Columns section present: a **Producers** checkbox among the columns. Either way it matches the setting for this page type.
 - Unchecking removes every `.pr-cell`/`.pr-inline` and the grid override; `producers-config` updates. Checking brings them back.
 
 ## T7: Navigation
