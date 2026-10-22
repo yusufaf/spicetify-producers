@@ -429,13 +429,24 @@
     return { kind, uri: `spotify:${kind}:${m[2]}` };
   }
 
+  /**
+   * Spicetify.Locale loads late on a cold start (and some builds lack it), so wait briefly. The
+   * fallback is the primary subtag: navigator.language can be "en-Latn-US", not Spotify's "en".
+   */
+  async function spotifyLocale() {
+    const deadline = Date.now() + 5000;
+    await waitFor(() => (Spicetify.Locale && Spicetify.Locale.getLocale) || Date.now() > deadline);
+    const locale = Spicetify.Locale && Spicetify.Locale.getLocale && Spicetify.Locale.getLocale();
+    return locale || (navigator.language || "en").split("-")[0];
+  }
+
   async function loadAlbumTracks(uri) {
     const tracks = [];
+    const locale = await spotifyLocale();
     for (let offset = 0; ; offset += 300) {
       const res = await Spicetify.GraphQL.Request(Spicetify.GraphQL.Definitions.getAlbum, {
         uri,
-        // Locale isn't ready on a cold start, and some Spicetify builds don't have it.
-        locale: (Spicetify.Locale && Spicetify.Locale.getLocale && Spicetify.Locale.getLocale()) || navigator.language || "en",
+        locale,
         limit: 300,
         offset,
       });
@@ -919,14 +930,13 @@
          ellipsize on its own while the producers keep their space. */
       /* Any tag: Spotify renders this container as a div or a span depending on the build/layout.
          !important so a theme restyling it can't push the producers out of view. */
-      [role="gridcell"] :has(> .pr-inline:not(:empty)) { display: flex !important; align-items: baseline; min-width: 0; white-space: pre !important; }
-      [role="gridcell"] :has(> .pr-inline:not(:empty)) { overflow: hidden; }
-      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a { flex: 0 0.05 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
-      [role="gridcell"] :has(> .pr-inline:not(:empty)) > a:only-of-type { flex-shrink: 0; max-width: 70%; }
-      /* Flex shrink is weighted by width, so the artist links get a near-zero factor (and a lone artist
-         none): the producers give up space first, down to 10ch, and the artists, Spotify's own info,
-         stay readable. */
-      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: 10ch; white-space: nowrap; overflow: hidden; }
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) { display: flex !important; align-items: baseline; min-width: 0; overflow: hidden; white-space: pre !important; }
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) > a { flex: 0 0.05 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+      [role="gridcell"][aria-colindex="2"] :has(> .pr-inline:not(:empty)) > a:only-of-type { flex-shrink: 0; max-width: 70%; }
+      /* Flex shrink is weighted by width, so several artist links get a near-zero factor and a lone
+         artist (capped at 70%) none: the producers give up space first, down to 10ch or the 30% a
+         lone artist leaves, and the artists, Spotify's own info, stay readable. */
+      .pr-inline { display: inline-flex; align-items: baseline; flex: 0 1 auto; min-width: min(10ch, 30%); white-space: nowrap; overflow: hidden; }
       .pr-inline:empty { display: none; }
       .pr-inline-sep { flex: none; white-space: pre; }
       .pr-inline-body { display: inline-flex; align-items: baseline; min-width: 0; gap: 4px; }
@@ -963,13 +973,18 @@
     if (!surface) return;
     const menus = added.matches('[role="menu"]') ? [added] : [...added.querySelectorAll('[role="menu"]')];
     for (const menu of menus) {
-      if (menu.querySelector('[data-pr-toggle]')) continue;
+      // Only the tracklist's own List button's menu: its aria-controls names the menu's id. Other
+      // menus with the same shape (Your Library's sort menu) are left alone.
+      const main = document.querySelector(SEL_MAIN_VIEW);
+      if (!menu.id || !main || !main.querySelector(`[aria-controls="${CSS.escape(menu.id)}"]`)) continue;
+      if (menu.querySelector("[data-pr-toggle]")) continue;
       const columnItems = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
       if (columnItems.length) addColumnCheckbox(columnItems[columnItems.length - 1], surface);
       else {
-        const viewItem = menu.querySelector('button[role="menuitemradio"][aria-checked="true"]');
+        // On playlists "Sort by" comes before "View as"; the last checked radio is the view item.
+        const checked = menu.querySelectorAll('button[role="menuitemradio"][aria-checked="true"]');
         const heading = menu.querySelector("li > span");
-        if (viewItem && heading) addViewMenuToggle(menu, heading.closest("li"), viewItem, surface);
+        if (checked.length && heading) addViewMenuToggle(menu, heading.closest("li"), checked[checked.length - 1], surface);
       }
     }
   }
@@ -987,6 +1002,7 @@
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (destroyed) return;
       setSurfaceEnabled(surface, !config[surface]);
       sync();
     });
@@ -1029,6 +1045,7 @@
     if (!selectedLi || !headingText || !viewLabel) return;
 
     const heading = /** @type {HTMLElement} */ (headingLi.cloneNode(true));
+    heading.dataset.prHeading = "";
     findTextElement(heading, headingText.textContent.trim()).textContent = "Producers";
     const li = /** @type {HTMLElement} */ (selectedLi.cloneNode(true));
     const btn = li.querySelector("button");
@@ -1160,6 +1177,9 @@
     queue = [];
     closePopover();
     clearAll();
+    // Toggles in a menu that's still open would otherwise outlive this instance.
+    document.querySelectorAll("[data-pr-heading]").forEach((el) => el.remove());
+    document.querySelectorAll("[data-pr-toggle]").forEach((el) => (el.closest("li") || el).remove());
     if (popoverEl) popoverEl.remove();
     const styles = document.getElementById(STYLE_ID);
     if (styles) styles.remove();
