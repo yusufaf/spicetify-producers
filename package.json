@@ -1,6 +1,6 @@
 {
   "name": "spicetify-producers",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Show each track's producers, from Spotify's own credits, as a column on album and playlist pages.",
   "main": "producers.js",
   "scripts": {

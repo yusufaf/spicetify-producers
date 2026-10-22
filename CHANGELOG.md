@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/yusufaf/spicetify-producers/compare/v0.1.0...v0.1.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* start reliably and keep settings reachable on Spotify 1.3.3 ([#2](https://github.com/yusufaf/spicetify-producers/issues/2)) ([0410bd4](https://github.com/yusufaf/spicetify-producers/commit/0410bd4129949bbb05a3c285ce2a2b852a62be8f))
+
 ## 0.1.0 (2026-10-20)
 
 
