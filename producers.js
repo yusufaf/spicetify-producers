@@ -433,9 +433,13 @@
    * Spicetify.Locale loads late on a cold start (and some builds lack it), so wait briefly. The
    * fallback is the primary subtag: navigator.language can be "en-Latn-US", not Spotify's "en".
    */
+  let localeWaited = false;
   async function spotifyLocale() {
-    const deadline = Date.now() + 5000;
-    await waitFor(() => (Spicetify.Locale && Spicetify.Locale.getLocale) || Date.now() > deadline);
+    if (!localeWaited) {
+      const deadline = Date.now() + 5000;
+      await waitFor(() => (Spicetify.Locale && Spicetify.Locale.getLocale) || Date.now() > deadline);
+      localeWaited = true;
+    }
     const locale = Spicetify.Locale && Spicetify.Locale.getLocale && Spicetify.Locale.getLocale();
     return locale || (navigator.language || "en").split("-")[0];
   }
@@ -973,14 +977,14 @@
     if (!surface) return;
     const menus = added.matches('[role="menu"]') ? [added] : [...added.querySelectorAll('[role="menu"]')];
     for (const menu of menus) {
-      // Only the tracklist's own List button's menu: its aria-controls names the menu's id. Other
-      // menus with the same shape (Your Library's sort menu) are left alone.
-      const main = document.querySelector(SEL_MAIN_VIEW);
-      if (!menu.id || !main || !main.querySelector(`[aria-controls="${CSS.escape(menu.id)}"]`)) continue;
       if (menu.querySelector("[data-pr-toggle]")) continue;
       const columnItems = menu.querySelectorAll('button[role="menuitemcheckbox"][data-column]');
       if (columnItems.length) addColumnCheckbox(columnItems[columnItems.length - 1], surface);
       else {
+        // Only the tracklist's own List button's menu: its aria-controls names the menu's id. Other
+        // menus with the same shape (Your Library's sort menu) are left alone.
+        const main = document.querySelector(SEL_MAIN_VIEW);
+        if (!menu.id || !main || !main.querySelector(`[aria-controls="${CSS.escape(menu.id)}"]`)) continue;
         // On playlists "Sort by" comes before "View as"; the last checked radio is the view item.
         const checked = menu.querySelectorAll('button[role="menuitemradio"][aria-checked="true"]');
         const heading = menu.querySelector("li > span");
@@ -1192,7 +1196,8 @@
    */
   async function waitFor(ready) {
     while (!ready()) {
-      if (destroyed) return false;
+      // A newer evaluated copy (re-injection over the installed file) supersedes this one.
+      if (destroyed || window.__producersLatest !== instanceToken) return false;
       await new Promise((r) => setTimeout(r, 100));
     }
     return !destroyed;
