@@ -1187,6 +1187,23 @@
     if (popoverEl) popoverEl.remove();
     const styles = document.getElementById(STYLE_ID);
     if (styles) styles.remove();
+    if (window.__spicetifyHealth && window.__spicetifyHealth.producers === health) delete window.__spicetifyHealth.producers;
+  }
+
+  /** Read by spicetify-compat's `check`. */
+  function health() {
+    const errors = [];
+    if (indexFailed) errors.push("Couldn't load this page's tracks");
+    if (failures) errors.push(`Credits fetch failed ${failures} time(s) in a row`);
+    if (givenUp.size) errors.push(`Gave up on credits for ${givenUp.size} track(s)`);
+    return {
+      ready: !destroyed,
+      anchors: {
+        rows: document.querySelectorAll("[data-pr-stamp]").length,
+        names: document.querySelectorAll("[data-pr-stamp] .pr-name").length,
+      },
+      errors,
+    };
   }
 
   /**
@@ -1241,6 +1258,7 @@
     registerMenuEntry();
     setupObservers();
     onNavigate();
+    (window.__spicetifyHealth = window.__spicetifyHealth || {}).producers = health;
     console.log(LOG_PREFIX, `v${PR_VERSION} initialized, ${cache.size} cached tracks.`);
   }
 
